@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<meta charset="UTF-8">
+<html>
+
+<head>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fuzzyset.js/0.0.91/fuzzyset.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+</head>
+
+<body>
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <span class="navbar-brand">BeatLibrary</span>
+    <div class="collapse navbar-collapse" id="navbarNav">
+      <ul class="navbar-nav">
+        <li class="nav-item">
+          <a class="nav-link" href="https://github.com/nickusve/BeatLibrary">Github</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link disabled" href="#">By Nicolas Venditti</a>
+        </li>
+      </ul>
+    </div>
+  </nav>
+  <div class="cover-container d-flex h-100 p-3 mx-auto flex-column">
+
+    <label for="itunesXml">Load Your iTunes Library</label>
+    <div class="input-group mb-3">
+      <div class="input-group-prepend">
+        <span class="input-group-text">iTunes XML</span>
+      </div>
+      <div class="custom-file">
+        <input type="file" class="custom-file-input" id="itunesXml">
+        <label class="custom-file-label" for="itunesXml">Choose file</label>
+      </div>
+    </div>
+
+    <label for="bsaberAccount">Filter Songs Using Your BSaber Account</label>
+    <div class="input-group mb-3">
+      <div class="input-group-prepend">
+        <span class="input-group-text" id="bsaberAccountUrl">https://bsaber.com/members/</span>
+      </div>
+      <input type="text" class="form-control" id="bsaberAccount" aria-describedby="bsaberAccountUrl">
+      <button class="btn input-group-text" onclick="applyFilter()">Filter</button>
+    </div>
+
+    <label for="filterProgress" id="filterProgressLabel" style="display:none">Filter Progress:</label>
+    <div class="progress" id="filterProgressDiv" style="display:none">
+      <div id="filterProgress" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" style="width:0%">Filtering</div>
+    </div>
+
+
+    <h3>Music:</h3>
+    <table class="table table-striped table-dark" id="musicTable" style="width: 100%">
+        <tr>
+            <th>Artist</th>
+            <th>Track</th>
+            <th>ID</th>
+            <th>Upvotes</th>
+            <th>Downvotes</th>
+            <th>Rating</th>
+            <th>Downloads</th>
+            <th>Link</th>
+        </tr>
+    </table>
+  </div>
+</body>
+
+<script type="text/javascript">
+
+var bSaberData;
+
+function readSingleFile(e) {
+    var file = e.target.files[0];
+    if (!file) {
+        return;
+    }
+    var reader = new FileReader();
+    reader.onload = function(e) {
+        var contents = e.target.result;
+        displayContents(contents);
+    };
+    reader.readAsText(file);
+}
+
+function xmlToJson(data) {
+    var jsonLibrary = [];
+    xml = $.parseXML(data);
+    $(xml).find("key:contains('Tracks')+dict > dict").each(function(i, elem) {
+        var $dict = $(elem);
+        var dict = {};
+        $dict.find("key").each(function(j, thiskey) {
+            dict[$(thiskey).text()] = $(thiskey).next().text();
+        });
+        jsonLibrary.push(dict);
+    });
+    return jsonLibrary;
+}
+
+function getBeastSaber(library) {
+
+    $.get("https://raw.githubusercontent.com/andruzzzhka/BeatSaberScrappedData/master/beatSaverScrappedData.json?jsoncallback=?", function(data) {
+        var bSaberLibrary = JSON.parse(data);
+        var libraryArtists = new Set([]);
+        var bSaberArtists = new Set([]);
+        var tracks = [];
+
+        for (var i = 0; i < library.length; i++) {
+            libraryArtists.add(library[i]["Artist"])
+        }
+        for (var i = 0; i < bSaberLibrary.length; i++) {
+            if (libraryArtists.has(bSaberLibrary[i]["metadata"]["songAuthorName"])) {
+                tracks.push(bSaberLibrary[i]);
+            }
+        }
+
+        // Sort by artist name
+        tracks.sort((a, b) => (a["metadata"]["songAuthorName"].toLowerCase() < b["metadata"]["songAuthorName"].toLowerCase()) ? 1 : -1)
+
+        //TODO fuzzy logic
+
+        var table = document.getElementById("musicTable");
+
+        for (var i = 0; i < tracks.length; i++) {
+            var track = tracks[i];
+            var row = table.insertRow(1);
+            row.insertCell(0).innerHTML = track["metadata"]["songAuthorName"];
+            row.insertCell(1).innerHTML = track["metadata"]["songName"];
+            row.insertCell(2).innerHTML = track["key"];
+            row.insertCell(3).innerHTML = track["stats"]["upVotes"];
+            row.insertCell(4).innerHTML = track["stats"]["downVotes"];
+            row.insertCell(5).innerHTML = track["stats"]["rating"];
+            row.insertCell(6).innerHTML = track["stats"]["downloads"];
+            row.insertCell(7).innerHTML = '<a target="_blank" rel="noopener noreferrer" href="https://bsaber.com/songs/' + track["key"] + '/">Get</a>'
+        }
+    });
+}
+
+function displayContents(contents) {
+
+    var library = xmlToJson(contents);
+
+    var table = document.getElementById("musicTable");
+
+    getBeastSaber(library);
+}
+
+function applyFilter() {
+  $("#filterProgressDiv").show()
+  $("#filterProgressLabel").show()
+  var itr = 1;
+  while(filterResults(itr))
+  {
+    itr++;
+  }
+
+    $("#filterProgressDiv").hide()
+    $("#filterProgressLabel").hide()
+}
+
+function filterResults(page) {
+
+  var goToNextPage = false;
+  jQuery.ajaxSetup({async:false});
+  $.ajaxPrefilter( function (options) {
+    if (options.crossDomain && jQuery.support.cors) {
+      var http = (window.location.protocol === 'http:' ? 'http:' : 'https:');
+      options.url = http + '//cors-anywhere.herokuapp.com/' + options.url;
+    }
+  });
+
+
+  $.get("https://bsaber.com/songs/new/page/" + page + "/?bookmarked_by=" + document.getElementById("bsaberAccount").value, function(data) {
+      var $page = $(data);
+      var table = document.getElementById("musicTable");
+
+      // If this is the first time set up the progress bar
+      if(1 === page)
+      {
+        // Get the last possible page button, excluding the next arrow
+        var pageButtons = $page.find("a.page-numbers").not(".next");
+        if(pageButtons && 0 < pageButtons.length)
+        {
+          // Get the last page and filter for the page number in the href
+          var lastPage = pageButtons[pageButtons.length - 1];
+          var lastPageArray = $(lastPage).attr("href").match("/page/(.*)/");
+
+          // If the page number is found update the progress bar maximum
+          if(lastPageArray && lastPageArray.length > 1)
+          {
+            $("#filterProgress").attr("aria-valuemax", lastPageArray[lastPageArray.length - 1]);
+          }
+        }
+      }
+
+      var numPages = $("#filterProgress").attr("aria-valuemax");
+      $("#filterProgress").width(String((page / numPages) * 100) + "%")
+      $("#filterProgress").text("Page " + page + " of " + numPages);
+      $("#filterProgress").attr("aria-valuenow", page);
+
+      if(0 != $page.find("a.next.page-numbers").length)
+      {
+        goToNextPage = true;
+      }
+
+      $page.find(".post-gallery > a").each(function(count, data) {
+        var songKeyArray = $(data).attr("href").match("/songs/(.*)/");
+        if(songKeyArray && songKeyArray.length > 1)
+        {
+          // Search for the track ID in the table and remove if found
+          var tableRow = $("td").filter(function() {
+            return $(this).text() == songKeyArray[1];
+          }).closest("tr");
+          if(0 < tableRow.length)
+          {
+            tableRow[0].remove();
+          }
+        }
+      });
+  });
+
+  jQuery.ajaxSetup({async:true});
+
+  return goToNextPage;
+}
+
+document.getElementById('itunesXml').addEventListener('change', readSingleFile, false);
+</script>
+
+</html>
